@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RBAC Playground</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #222; display: flex; flex-direction: column; }
+
+  /* Sticky top bar */
+  #topbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .75rem 1.5rem;
+    background: #1a1a2e; color: #e0e0e0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+  #topbar h1 { font-size: 1.1rem; letter-spacing: .05em; }
+
+  /* Scrollable main */
+  #main {
+    flex: 1; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 1rem;
+    padding: 1rem; max-width: 1200px; width: 100%; margin: 0 auto;
+  }
+
+  /* Cards */
+  section { background: #fff; border-radius: 8px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  section.setup { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: #555; margin-bottom: .75rem; }
+  h3 { font-size: .82rem; font-weight: 600; color: #333; margin-bottom: .5rem; display: flex; align-items: center; justify-content: space-between; }
+
+  /* Setup: 2 columns */
+  .setup-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; flex: 1; min-height: 0; }
+  .setup-col { background: #fafafa; border: 1px solid #e8e8e8; border-radius: 6px; padding: .75rem; display: flex; flex-direction: column; min-height: 0; }
+  .setup-col > div[id] { flex: 1; overflow-y: auto; min-height: 0; }
+
+  /* Role graph */
+  #roleGraph { flex: 1; min-height: 260px; position: relative; }
+  #roleGraph svg { width: 100%; height: 100%; display: block; }
+  .graph-node circle { cursor: grab; stroke-width: 2; }
+  .graph-node circle:active { cursor: grabbing; }
+  .graph-node text { font-size: 11px; font-family: system-ui, sans-serif; pointer-events: none; user-select: none; }
+  .graph-link { stroke: #aaa; stroke-width: 1.5; marker-end: url(#arrow); }
+  .graph-node .delete-btn { cursor: pointer; display: none; }
+  .graph-node:hover .delete-btn { display: block; }
+
+  /* Items */
+  .item { display: flex; align-items: flex-start; justify-content: space-between; padding: .35rem .4rem; border-radius: 4px; background: #fff; border: 1px solid #eee; margin-bottom: .3rem; font-size: .8rem; gap: .4rem; }
+  .item-info { flex: 1; min-width: 0; }
+  .item-id { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { color: #bbb; font-size: .78rem; font-style: italic; padding: .25rem 0; display: block; }
+
+  /* Tags */
+  .tag  { display: inline-block; background: #e8f0fe; color: #1a56a8; border-radius: 3px; padding: .05rem .3rem; font-size: .7rem; margin: .1rem .1rem 0 0; }
+  .tag.action { background: #e6f4ea; color: #1a6b2e; }
+  .tag.role   { background: #f3e8fe; color: #6b1a9e; }
+
+  /* Buttons */
+  button { padding: .35rem .8rem; border: none; border-radius: 4px; font-size: .8rem; cursor: pointer; font-weight: 500; }
+  .btn-primary { background: #4a90d9; color: #fff; }
+  .btn-primary:hover { background: #3a7bc8; }
+  .btn-reset { background: #e67e22; color: #fff; font-size: .78rem; padding: .3rem .8rem; }
+  .btn-reset:hover { background: #cf6d17; }
+  .btn-sm { padding: .2rem .5rem; font-size: .72rem; background: #e05050; color: #fff; border-radius: 3px; flex-shrink: 0; }
+  .btn-sm:hover { background: #c84040; }
+  .btn-add { padding: .2rem .55rem; font-size: .75rem; background: #4a90d9; color: #fff; border-radius: 3px; }
+  .btn-add:hover { background: #3a7bc8; }
+
+  /* Modal */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: #fff; border-radius: 8px; padding: 1.5rem; min-width: 340px; max-width: 460px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,.18); }
+  .modal-title { font-size: .95rem; font-weight: 700; margin-bottom: 1rem; color: #1a1a2e; }
+  .modal-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+  .btn-cancel { background: #e0e0e0; color: #444; }
+  .btn-cancel:hover { background: #ccc; }
+
+  /* Form */
+  .field { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .75rem; }
+  label { font-size: .78rem; color: #444; font-weight: 500; }
+  input[type=text], select { border: 1px solid #d0d0d0; border-radius: 4px; padding: .4rem .6rem; font-size: .85rem; width: 100%; }
+  input[type=text]:focus, select:focus { outline: none; border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,.2); }
+  select[multiple] { height: 80px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+  .radio-group { display: flex; gap: .75rem; flex-wrap: wrap; }
+  .radio-group label { display: flex; align-items: center; gap: .3rem; font-weight: 400; cursor: pointer; }
+
+  /* composed permission preview */
+  .perm-preview { font-size: .78rem; color: #555; margin-top: -.5rem; margin-bottom: .75rem; min-height: 1.2em; }
+  .perm-preview span { font-family: monospace; background: #f0f4ff; padding: .1rem .35rem; border-radius: 3px; color: #1a56a8; }
+
+  .err { color: #c0392b; font-size: .76rem; margin-top: .3rem; }
+  .hidden { display: none !important; }
+  .divider { border: none; border-top: 1px solid #eee; margin: 1rem 0; }
+
+  /* Result */
+  #result { margin-top: 1rem; border-radius: 6px; padding: 1rem; text-align: center; font-size: 1.1rem; font-weight: 700; letter-spacing: .04em; }
+  #result .perm-used { display: block; font-size: .78rem; font-weight: 400; opacity: .75; margin-top: .25rem; font-family: monospace; }
+  #result.granted { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+  #result.denied  { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+  @media (max-width: 600px) { .setup-grid { grid-template-columns: 1fr; } .field-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>RBAC Playground</h1>
+  <button id="seedBtn" class="btn-reset" onclick="ui.seed()">Reset Sample Data</button>
+</div>
+
+<div id="main">
+
+<!-- VERIFY -->
+<section>
+  <h2>Verify</h2>
+  <div class="field-row">
+    <div class="field">
+      <label for="vRole">Role</label>
+      <select id="vRole"><option value="">— select role —</option></select>
+    </div>
+    <div class="field">
+      <label>Check Mode</label>
+      <div class="radio-group" style="margin-top:.3rem">
+        <label><input type="radio" name="checkMode" value="single" checked onchange="ui.toggleExtraRoles()"> Single</label>
+        <label><input type="radio" name="checkMode" value="any" onchange="ui.toggleExtraRoles()"> AnyGranted</label>
+        <label><input type="radio" name="checkMode" value="all" onchange="ui.toggleExtraRoles()"> AllGranted</label>
+      </div>
+    </div>
+  </div>
+  <div class="field" id="extraRolesField" style="display:none">
+    <label for="extraRoles">Extra Roles <span style="font-weight:400;color:#888">(Ctrl/Cmd+click)</span></label>
+    <select id="extraRoles" multiple></select>
+  </div>
+
+  <div class="field-row">
+    <div class="field">
+      <label for="vResource">Resource</label>
+      <select id="vResource" onchange="ui.updatePermPreview(); ui.updateActionOptions()"><option value="">— select resource —</option></select>
+    </div>
+    <div class="field">
+      <label for="vAction">Action</label>
+      <select id="vAction" onchange="ui.updatePermPreview()"><option value="">— select action —</option></select>
+    </div>
+  </div>
+  <div class="perm-preview" id="permPreview"></div>
+
+  <hr class="divider">
+  <div class="field">
+    <label for="assertMode">Assertion</label>
+    <select id="assertMode" onchange="ui.toggleAssertParams()">
+      <option value="none">None</option>
+      <optgroup label="Time">
+        <option value="isWeekday">IsWeekday</option>
+        <option value="isWeekend">IsWeekend</option>
+      </optgroup>
+      <optgroup label="Ownership">
+        <option value="isOwner">IsOwner</option>
+        <option value="isNotOwner">IsNotOwner</option>
+      </optgroup>
+      <optgroup label="System">
+        <option value="isLinux">IsLinux</option>
+        <option value="isWindows">IsWindows</option>
+      </optgroup>
+      <optgroup label="External URL">
+        <option value="is200">Is200</option>
+        <option value="is401">Is401</option>
+        <option value="is403">Is403</option>
+        <option value="is404">Is404</option>
+        <option value="is500">Is500</option>
+      </optgroup>
+    </select>
+  </div>
+  <div id="ownerFields" class="hidden">
+    <div class="field-row">
+      <div class="field">
+        <label for="apOwner">Owner</label>
+        <input type="text" id="apOwner" placeholder="alice">
+      </div>
+      <div class="field">
+        <label for="apRequestUser">Request User</label>
+        <input type="text" id="apRequestUser" placeholder="bob">
+      </div>
+    </div>
+  </div>
+  <div id="urlField" class="hidden">
+    <div class="field">
+      <label for="apUrl">URL</label>
+      <input type="text" id="apUrl" placeholder="https://example.com/api">
+    </div>
+  </div>
+
+  <div style="display:flex;gap:.5rem;align-items:center;margin-top:.75rem">
+    <button class="btn-primary" onclick="ui.verify()">Check Permission</button>
+    <span id="verifyErr" class="err"></span>
+  </div>
+  <div id="result" class="hidden"></div>
+</section>
+
+<!-- SETUP -->
+<section class="setup">
+  <h2>Setup</h2>
+  <div class="setup-grid">
+
+    <div class="setup-col">
+      <h3>Roles <button class="btn-add" onclick="modal.open('addRole')">+ Add</button></h3>
+      <div id="roleGraph"></div>
+    </div>
+
+    <div class="setup-col">
+      <h3>Permissions <button class="btn-add" onclick="modal.open('assignPerm')">+ Assign</button></h3>
+      <div id="permList"><span class="empty">No permissions assigned yet.</span></div>
+    </div>
+
+  </div>
+</section>
+
+</div>
+
+<!-- MODAL: Add Role -->
+<div class="modal-backdrop" id="modal-addRole">
+  <div class="modal">
+    <div class="modal-title">Add Role</div>
+    <div class="field">
+      <label for="roleId">Role ID</label>
+      <input type="text" id="roleId" placeholder="e.g. editor">
+    </div>
+    <div class="field">
+      <label for="roleParents">Parent Roles <span style="font-weight:400;color:#888">(Ctrl/Cmd+click)</span></label>
+      <select id="roleParents" multiple></select>
+    </div>
+    <div id="addRoleErr" class="err"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="modal.close('addRole')">Cancel</button>
+      <button class="btn-primary" onclick="ui.addRole()">Add Role</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Assign Permission -->
+<div class="modal-backdrop" id="modal-assignPerm">
+  <div class="modal">
+    <div class="modal-title">Assign Permission to Role</div>
+    <div class="field">
+      <label for="assignRole">Role</label>
+      <select id="assignRole"><option value="">— select role —</option></select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="assignResource">Resource</label>
+        <input type="text" id="assignResource" placeholder="e.g. article" oninput="ui.updateAssignPreview()">
+      </div>
+      <div class="field">
+        <label for="assignAction">Action</label>
+        <input type="text" id="assignAction" placeholder="e.g. read" oninput="ui.updateAssignPreview()">
+      </div>
+    </div>
+    <div class="perm-preview" id="assignPreview"></div>
+    <div id="assignErr" class="err"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="modal.close('assignPerm')">Cancel</button>
+      <button class="btn-primary" onclick="ui.assignPermission()">Assign</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script>
+const api = {
+  async getState() {
+    const r = await fetch('/api/state');
+    return (await r.json()).data;
+  },
+  async addRole(id, parents) {
+    const r = await fetch('/api/roles', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id, parents})
+    });
+    if (!r.ok) throw new Error(await r.text());
+  },
+  async deleteRole(id) {
+    const r = await fetch('/api/roles/' + encodeURIComponent(id), {method: 'DELETE'});
+    if (!r.ok) throw new Error(await r.text());
+  },
+  async assignPermission(roleId, permission) {
+    const r = await fetch('/api/roles/' + encodeURIComponent(roleId) + '/permissions', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({permission})
+    });
+    if (!r.ok) throw new Error(await r.text());
+  },
+  async revokePermission(roleId, permId) {
+    const r = await fetch('/api/roles/' + encodeURIComponent(roleId) + '/permissions/' + encodeURIComponent(permId), {method: 'DELETE'});
+    if (!r.ok) throw new Error(await r.text());
+  },
+  async verify(body) {
+    const r = await fetch('/api/verify', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return (await r.json()).data;
+  }
+};
+
+const modal = {
+  open(name) { document.getElementById('modal-' + name).classList.add('open'); },
+  close(name) {
+    document.getElementById('modal-' + name).classList.remove('open');
+    const e = document.getElementById('add' + name[0].toUpperCase() + name.slice(1) + 'Err');
+    if (e) e.textContent = '';
+  }
+};
+document.querySelectorAll('.modal-backdrop').forEach(el =>
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); })
+);
+
+// ---- Role Graph (D3 force-directed) ----
+let simulation = null;
+
+function renderGraph(state) {
+  const container = document.getElementById('roleGraph');
+  const roles = state.roles || [];
+
+  // Build nodes and links
+  // Edge direction: parent → child (arrow points to child, meaning child inherits from parent)
+  const nodes = roles.map(r => ({id: r.id}));
+  const links = [];
+  roles.forEach(r => {
+    r.parents.forEach(p => {
+      links.push({source: p, target: r.id});
+    });
+  });
+
+  const W = container.clientWidth || 400;
+  const H = Math.max(container.clientHeight || 300, 260);
+
+  // Remove old SVG
+  d3.select(container).select('svg').remove();
+
+  if (!roles.length) {
+    container.innerHTML = '<span class="empty" style="padding:.5rem">No roles yet.</span>';
+    return;
+  }
+
+  const svg = d3.select(container).append('svg')
+    .attr('width', W).attr('height', H);
+
+  // Arrow marker
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 40).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#aaa');
+
+  const g = svg.append('g');
+
+  // Zoom & pan
+  svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', e => g.attr('transform', e.transform)));
+
+  if (simulation) simulation.stop();
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(90))
+    .force('charge', d3.forceManyBody().strength(-300))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(55));
+
+  const link = g.append('g').selectAll('line')
+    .data(links).join('line')
+    .attr('class', 'graph-link');
+
+  const node = g.append('g').selectAll('g')
+    .data(nodes).join('g')
+    .attr('class', 'graph-node')
+    .call(d3.drag()
+      .on('start', (event, d) => {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+      })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      })
+    );
+
+  // Color nodes by depth (distance from roots)
+  const depthMap = {};
+  const rootIds = new Set(roles.filter(r => r.parents.length === 0).map(r => r.id));
+  nodes.forEach(n => { depthMap[n.id] = rootIds.has(n.id) ? 0 : Infinity; });
+  // BFS
+  const queue = [...rootIds];
+  while (queue.length) {
+    const cur = queue.shift();
+    links.forEach(l => {
+      const tid = typeof l.target === 'object' ? l.target.id : l.target;
+      const sid = typeof l.source === 'object' ? l.source.id : l.source;
+      if (sid === cur && depthMap[tid] > depthMap[cur] + 1) {
+        depthMap[tid] = depthMap[cur] + 1;
+        queue.push(tid);
+      }
+    });
+  }
+  const maxDepth = Math.max(1, ...Object.values(depthMap).filter(v => v !== Infinity));
+  const colorScale = d3.scaleSequential(d3.interpolateBlues).domain([-0.5, maxDepth + 0.5]);
+
+  function nodeFill(d) { return colorScale(depthMap[d.id] ?? 0); }
+  function contrastColor(fill) {
+    const rgb = d3.rgb(fill);
+    const c = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const lum = 0.2126 * c(rgb.r) + 0.7152 * c(rgb.g) + 0.0722 * c(rgb.b);
+    return lum > 0.179 ? '#1a1a2e' : '#ffffff';
+  }
+  // Pill dimensions: pad text by 10px each side, fixed height 26px
+  const PY = 13, PX = 10;
+  function pillW(d) { return d.id.length * 7 + PX * 2; }
+
+  // Pill background (contrasting color)
+  node.append('rect')
+    .attr('rx', PY).attr('ry', PY)
+    .attr('height', PY * 2)
+    .attr('width', d => pillW(d))
+    .attr('x', d => -pillW(d) / 2)
+    .attr('y', -PY)
+    .attr('fill', d => contrastColor(nodeFill(d)))
+    .attr('stroke', d => nodeFill(d))
+    .attr('stroke-width', 2);
+
+  // Label in the node's own color
+  node.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '0.35em')
+    .attr('font-size', '12px')
+    .attr('fill', d => nodeFill(d))
+    .text(d => d.id);
+
+  // Delete button (×) top-right of pill
+  node.append('circle')
+    .attr('class', 'delete-btn')
+    .attr('cx', d => pillW(d) / 2).attr('cy', -PY)
+    .attr('r', 8)
+    .attr('fill', '#e05050')
+    .attr('stroke', '#fff').attr('stroke-width', 1.5)
+    .on('click', (event, d) => { event.stopPropagation(); ui.deleteRole(d.id); });
+
+  node.append('text')
+    .attr('class', 'delete-btn')
+    .attr('x', d => pillW(d) / 2).attr('y', -PY)
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+    .attr('fill', '#fff').attr('font-size', '10px').attr('font-weight', 'bold')
+    .style('pointer-events', 'none')
+    .text('×');
+
+  simulation.on('tick', () => {
+    link
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+const render = {
+  all(state) {
+    renderGraph(state);
+    render.permList(state);
+    render.selects(state);
+  },
+  permList(state) {
+    const el = document.getElementById('permList');
+    const roles = state.roles || [];
+    const rows = [];
+    roles.forEach(role => {
+      role.permissions.forEach(perm => {
+        const parts = perm.split('::');
+        const res = parts[0], act = parts.slice(1).join('::');
+        rows.push(`<div class="item">
+          <div class="item-info">
+            <div class="item-id">
+              <span class="tag role">${esc(role.id)}</span>
+              <span class="tag">${esc(res)}</span>::<span class="tag action">${esc(act)}</span>
+            </div>
+          </div>
+          <button class="btn-sm" onclick="ui.revokePermission('${esc(role.id)}','${esc(perm)}')">✕</button>
+        </div>`);
+      });
+    });
+    el.innerHTML = rows.length ? rows.join('') : '<span class="empty">No permissions assigned yet.</span>';
+  },
+  selects(state) {
+    const roles = (state.roles || []).map(r => r.id);
+    setOptions('roleParents', roles);
+    setOptions('vRole', roles, '— select role —');
+    setOptions('extraRoles', roles);
+    setOptions('assignRole', roles, '— select role —');
+    const allPerms = (state.roles || []).flatMap(r => r.permissions);
+    const resources = [...new Set(allPerms.map(p => p.split('::')[0]))].sort();
+    setOptions('vResource', resources, '— select resource —');
+    const actions = [...new Set(allPerms.map(p => p.split('::').slice(1).join('::')))].sort();
+    setOptions('vAction', actions, '— select action —');
+  }
+};
+
+function setOptions(id, values, placeholder) {
+  const sel = document.getElementById(id);
+  const prev = [...sel.selectedOptions].map(o => o.value);
+  sel.innerHTML = '';
+  if (placeholder !== undefined) {
+    const o = document.createElement('option'); o.value = ''; o.textContent = placeholder;
+    sel.appendChild(o);
+  }
+  values.forEach(v => {
+    const o = document.createElement('option'); o.value = v; o.textContent = v;
+    if (prev.includes(v)) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function getRadio(name) {
+  return document.querySelector(`input[name="${name}"]:checked`).value;
+}
+function getMultiSelect(id) {
+  return [...document.getElementById(id).selectedOptions].map(o => o.value);
+}
+function composedPerm(res, act) {
+  if (!res && !act) return '';
+  return (res || '*') + '::' + (act || '*');
+}
+
+let currentState = {roles: []};
+async function refresh() {
+  currentState = await api.getState();
+  render.all(currentState);
+}
+
+const ui = {
+  updatePermPreview() {
+    const res = document.getElementById('vResource').value;
+    const act = document.getElementById('vAction').value;
+    const p = composedPerm(res, act);
+    const el = document.getElementById('permPreview');
+    el.innerHTML = p ? `Permission: <span>${esc(p)}</span>` : '';
+  },
+  updateActionOptions() {
+    const res = document.getElementById('vResource').value;
+    const actions = res
+      ? [...new Set((currentState.roles || []).flatMap(r => r.permissions)
+          .filter(p => p.startsWith(res + '::'))
+          .map(p => p.slice(res.length + 2)))]
+      : [...new Set((currentState.roles || []).flatMap(r => r.permissions).map(p => p.split('::').slice(1).join('::')))];
+    setOptions('vAction', actions, '— select action —');
+    document.getElementById('vAction').value = '';
+    ui.updatePermPreview();
+  },
+  updateAssignPreview() {
+    const res = document.getElementById('assignResource').value.trim();
+    const act = document.getElementById('assignAction').value.trim();
+    const p = composedPerm(res, act);
+    const el = document.getElementById('assignPreview');
+    el.innerHTML = p ? `Permission: <span>${esc(p)}</span>` : '';
+  },
+  toggleExtraRoles() {
+    document.getElementById('extraRolesField').style.display = getRadio('checkMode') !== 'single' ? '' : 'none';
+  },
+  toggleAssertParams() {
+    const mode = document.getElementById('assertMode').value;
+    document.getElementById('ownerFields').classList.toggle('hidden', !['isOwner','isNotOwner'].includes(mode));
+    document.getElementById('urlField').classList.toggle('hidden', !['is200','is401','is403','is404','is500'].includes(mode));
+  },
+
+  async addRole() {
+    const id = document.getElementById('roleId').value.trim();
+    const parents = getMultiSelect('roleParents');
+    const errEl = document.getElementById('addRoleErr');
+    errEl.textContent = '';
+    if (!id) { errEl.textContent = 'Role ID is required.'; return; }
+    try {
+      await api.addRole(id, parents);
+      document.getElementById('roleId').value = '';
+      modal.close('addRole');
+      await refresh();
+    } catch(e) { errEl.textContent = e.message; }
+  },
+
+  async deleteRole(id) {
+    try { await api.deleteRole(id); await refresh(); }
+    catch(e) { alert(e.message); }
+  },
+
+  async assignPermission() {
+    const roleId = document.getElementById('assignRole').value;
+    const res = document.getElementById('assignResource').value.trim();
+    const act = document.getElementById('assignAction').value.trim();
+    const errEl = document.getElementById('assignErr');
+    errEl.textContent = '';
+    if (!roleId) { errEl.textContent = 'Select a role.'; return; }
+    if (!res)    { errEl.textContent = 'Resource is required.'; return; }
+    if (!act)    { errEl.textContent = 'Action is required.'; return; }
+    const permission = res + '::' + act;
+    try {
+      await api.assignPermission(roleId, permission);
+      document.getElementById('assignResource').value = '';
+      document.getElementById('assignAction').value = '';
+      document.getElementById('assignPreview').innerHTML = '';
+      modal.close('assignPerm');
+      await refresh();
+    } catch(e) { errEl.textContent = e.message; }
+  },
+
+  async revokePermission(roleId, permId) {
+    try { await api.revokePermission(roleId, permId); await refresh(); }
+    catch(e) { alert(e.message); }
+  },
+
+  async seed() {
+    const btn = document.getElementById('seedBtn');
+    btn.disabled = true; btn.textContent = 'Resetting…';
+    try {
+      const r = await fetch('/api/seed', {method: 'POST'});
+      if (!r.ok) throw new Error(await r.text());
+      await refresh();
+      btn.textContent = 'Reset ✓';
+      setTimeout(() => { btn.textContent = 'Reset Sample Data'; }, 2000);
+    } catch(e) {
+      alert(e.message);
+      btn.textContent = 'Reset Sample Data';
+    } finally { btn.disabled = false; }
+  },
+
+  async verify() {
+    const role = document.getElementById('vRole').value;
+    const resource = document.getElementById('vResource').value;
+    const action = document.getElementById('vAction').value;
+    const checkMode = getRadio('checkMode');
+    const assertMode = document.getElementById('assertMode').value;
+    const errEl = document.getElementById('verifyErr');
+    errEl.textContent = '';
+
+    if (!role)     { errEl.textContent = 'Select a role.'; return; }
+    if (!resource) { errEl.textContent = 'Resource is required.'; return; }
+    if (!action)   { errEl.textContent = 'Action is required.'; return; }
+
+    const assertParams = {};
+    if (['isOwner','isNotOwner'].includes(assertMode)) {
+      assertParams.owner = document.getElementById('apOwner').value.trim();
+      assertParams.requestUser = document.getElementById('apRequestUser').value.trim();
+    }
+    if (['is200','is401','is403','is404','is500'].includes(assertMode)) {
+      assertParams.url = document.getElementById('apUrl').value.trim();
+      if (!assertParams.url) { errEl.textContent = 'Enter a URL for the assertion.'; return; }
+    }
+
+    const extraRoles = checkMode !== 'single' ? getMultiSelect('extraRoles') : [];
+    try {
+      const data = await api.verify({role, resource, action, checkMode, assertMode, assertParams, roles: extraRoles});
+      const el = document.getElementById('result');
+      el.classList.remove('hidden', 'granted', 'denied');
+      el.classList.add(data.granted ? 'granted' : 'denied');
+      el.innerHTML = (data.granted ? 'GRANTED ✓' : 'DENIED ✗')
+        + `<span class="perm-used">${esc(data.permission)}</span>`;
+    } catch(e) { errEl.textContent = e.message; }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', refresh);
+</script>
+</body>
+</html>
