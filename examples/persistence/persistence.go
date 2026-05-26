@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
-	"os"
 
 	"github.com/mikespook/gorbac/v3"
 )
@@ -12,23 +10,9 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
-func LoadJson(filename string, v interface{}) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return json.NewDecoder(f).Decode(v)
-}
+func LoadJson(filename string, v interface{}) error { _ = "STUB: not implemented"; return nil }
 
-func SaveJson(filename string, v interface{}) error {
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return json.NewEncoder(f).Encode(v)
-}
+func SaveJson(filename string, v interface{}) error { _ = "STUB: not implemented"; return nil }
 
 func main() {
 	// map[RoleId]PermissionIds
